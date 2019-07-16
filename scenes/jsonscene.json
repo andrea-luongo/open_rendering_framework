@@ -1,0 +1,89 @@
+{
+
+	"Integrator" : {
+			"type" : "PathTracer",
+			"parameters": {
+				"max_depth" : 100,
+				"scene_epsilon" : 0.0001,
+				"exception_color" : [1.0, 0.0, 1.0]
+			}
+	},
+	
+	
+	"Background" : {
+		"type" : "EnvMapBackground",
+		"parameters" : {
+			"path" : "../../data/CedarCity.hdr",
+			"background_color" : [0.0, 0.0, 0.0]
+		}
+	},
+	
+	"Camera" : {
+		"type" : "PinholeCamera",
+		"parameters" : {
+			"eye" : [0.0, 1.0, 2.0],
+			"lookat" : [0.0, 1.0, 0.0],
+			"up" : [0.0, 1.0, 0.0],
+			"vfov" : 60,
+			"width" : 1200,
+			"height" : 1000
+		}
+	},
+	
+	"Lights" : [
+		{
+			"type" : "PointLight",
+			"parameters" : {
+				"radiance" : [2.0, 0.0, 2.0],
+				"position" : [-1.0, 0.0, 1.0]
+			}
+		},
+		{
+			"type" : "PointLight",
+			"parameters" : {
+				"radiance" : [4.0, 2.0, 0.0],
+				"position" : [1.0, 0.0, 1.0]
+			}
+		},
+		{
+			"type" : "DirectionalLight",
+			"parameters" : {
+				"radiance" : [0.0, 2.0, 0.0],
+				"direction" : [-1.0, 1.0, -1.0]
+			}
+		}
+	],
+	
+	"Geometries" : [
+		{
+			"type" : "obj",
+			"parameters" : {
+				"path" : "../../data/closed_bunny_vn.obj",
+				"position" : [0.0, 0.0, 0.0],
+				"scale" : [1.0, 1.0, 1.0],
+				"material" : {
+					"mtl_name" : "diffuse_shader",
+					"mtl_parameters" : {
+						"diffuse_color" : [1.0, 0.3, 0.7]
+					}
+				}
+			}
+		},
+		{
+			"type" : "obj",
+			"parameters" : {
+				"path" : "../../data/dragon_normals.obj",
+				"position" : [0.0, 1.0, 0.0],
+				"scale" : [1.0, 1.0, 1.0],
+				"rotation" : [90, -1, 0, 0],
+				"material" : {
+					"mtl_name" : "normal_shader",
+					"mtl_parameters" : {
+						"diffuse_color" : [0.2, 0.8, 0.5]
+					}
+				}
+			}
+		}
+	]
+
+}

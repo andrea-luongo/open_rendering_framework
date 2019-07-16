@@ -30,10 +30,10 @@ void OptixScene::resizeScene(GLuint w, GLuint h)
 	
 	optix::Buffer buffer = getOutputBuffer();
 	buffer->setSize(WIDTH, HEIGHT);
-	optix::Buffer position_buffer = getPositionBuffer();
-	position_buffer->setSize(WIDTH, HEIGHT);
-	optix::Buffer normal_buffer = getNormalBuffer();
-	normal_buffer->setSize(WIDTH, HEIGHT);
+	//optix::Buffer position_buffer = getPositionBuffer();
+	//position_buffer->setSize(WIDTH, HEIGHT);
+	//optix::Buffer normal_buffer = getNormalBuffer();
+	//normal_buffer->setSize(WIDTH, HEIGHT);
 
 	sceneLoader->resizeCamera(WIDTH, HEIGHT);
 }
