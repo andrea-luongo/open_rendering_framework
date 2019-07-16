@@ -130,7 +130,7 @@ if(GLUT_FOUND AND OPENGL_FOUND)
   add_definitions(-DGLUT_FOUND -DGLUT_NO_LIB_PRAGMA)
   add_definitions(-DNOMINMAX)
   # See top level CMakeLists.txt file for documentation of OPTIX_add_sample_executable.
-  OPTIX_add_sample_executable( open_rendering_framework
+  OPTIX_add_sample_executable( qt_optix_framework
 	${sources}
     )
 	

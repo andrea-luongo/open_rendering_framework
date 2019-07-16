@@ -159,6 +159,8 @@ void CameraTab::updateResizeLabels(int width, int height)
 {
 	this->findChild<QLineEdit*>("width")->setText(QString::number(width));
 	this->findChild<QLineEdit*>("height")->setText(QString::number(height));
+	this->findChild<QLineEdit*>("patch_dims_x")->setText(QString::number(width));
+	this->findChild<QLineEdit*>("patch_dims_y")->setText(QString::number(height));
 }
 
 void CameraTab::resizeCamera()

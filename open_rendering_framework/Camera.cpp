@@ -106,6 +106,7 @@ void PinholeCamera::resizeCamera(uint width, uint height)
 {
 	WIDTH = width;
 	HEIGHT = height;
+	setPatchDims(optix::make_uint2(width, height));
 	calculateCameraVariables();
 }
 
