@@ -1,0 +1,242 @@
+#include "OptixSceneLoader.h"
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include "OptixScene.h"
+#include "sampleConfig.h"
+
+OptixSceneLoader::OptixSceneLoader(optix::Context c)
+{
+	context = c;
+
+}
+
+OptixSceneLoader::~OptixSceneLoader()
+{
+
+}
+
+bool OptixSceneLoader::loadJSONScene(QString scene_path, uint& width, uint& height)
+{
+	QFile loadFile(scene_path);
+	if (!loadFile.open(QIODevice::ReadOnly)) {
+		qWarning("Couldn't open scene file.");
+		return false;
+	}
+
+	QByteArray saveData = loadFile.readAll();
+	QJsonParseError err;
+	QJsonDocument loadDoc(QJsonDocument::fromJson(saveData, &err));
+
+	readJSON(loadDoc.object(), width, height);
+}
+
+void OptixSceneLoader::readJSON(const QJsonObject &json, uint& width, uint& height)
+{
+	if (json.contains("Integrators") && json["Integrators"].isArray()) {
+		QJsonArray integratorArray = json["Integrators"].toArray();
+		integrators.clear();
+		integrators.reserve(integratorArray.size());
+		for (int integratorIndex = 0; integratorIndex < integratorArray.size(); ++integratorIndex) {
+			QJsonObject integratorObject = integratorArray[integratorIndex].toObject();
+			Integrator* integrator = readIntegrator(integratorObject);
+			integrators.append(integrator);
+		}
+	}
+	
+	if (json.contains("Background") && json["Background"].isObject()) {
+		QJsonObject backgroundObject = json["Background"].toObject();
+		background = readBackground(backgroundObject);
+	}
+
+	if (json.contains("Camera") && json["Camera"].isObject()) {
+		QJsonObject cameraObject = json["Camera"].toObject();
+		camera = readCamera(cameraObject, width, height);
+
+	}
+
+	obj_group = context->createGroup();
+	obj_group->setChildCount(0);
+	if (json.contains("Geometries") && json["Geometries"].isArray()) {	
+		QJsonArray geometryArray = json["Geometries"].toArray();
+		geometries.clear();
+		geometries.reserve(geometryArray.size());
+		//obj_group->setChildCount(obj_group->getChildCount() + static_cast<unsigned int>(geometryArray.size()));
+		optix::Acceleration acceleration = context->createAcceleration("Trbvh", "Bvh");
+		obj_group->setAcceleration(acceleration);
+		for (int geometryIndex = 0; geometryIndex < geometryArray.size(); ++geometryIndex) {
+			QJsonObject geometryObject = geometryArray[geometryIndex].toObject();
+			Geometry* geometry = readGeometry(geometryObject);
+			geometries.append(geometry);
+
+		}
+		//int count = obj_group->getChildCount();
+	}
+
+	initLightBuffers();
+	if (json.contains("Lights") && json["Lights"].isArray()) {
+		QJsonArray lightArray = json["Lights"].toArray();
+		lights.clear();
+		lights.reserve(lightArray.size());
+		light_buffer->setSize(lightArray.size());
+		LightStruct* light_data_vector = new LightStruct[lightArray.size()];
+		for (int lightIndex = 0; lightIndex < lightArray.size(); ++lightIndex) {
+			QJsonObject lightObject = lightArray[lightIndex].toObject();
+			LightStruct a;
+			LightStruct* light_data = new LightStruct();
+			Light* light = readLight(lightObject, light_data);
+			lights.append(light);
+			light_data_vector[lightIndex] = *light_data;
+			delete light_data;
+		}
+		memcpy(light_buffer->map(), light_data_vector, lightArray.size() * sizeof(LightStruct));
+		context["light_buffer"]->set(light_buffer);
+		light_buffer->unmap();
+		loadTriangleLightBuffer(light_data_vector, lightArray.size());
+		delete light_data_vector;
+
+	}
+	context["top_object"]->set(obj_group);
+	context["top_shadower"]->set(obj_group);
+}
+
+Integrator* OptixSceneLoader::readIntegrator(const QJsonObject &integratorObject) {
+
+	QString integratorType;
+	Integrator* integrator;
+	if (integratorObject.contains("type") && integratorObject["type"].isString()) {
+		integratorType = integratorObject["type"].toString();
+	}
+
+	if (integratorType.compare(QString("PathTracer"), Qt::CaseInsensitive) == 0) {
+		integrator = new PathTracer();
+		integrator->readJSON(integratorObject, context);
+	}
+	return integrator;
+}
+
+Background* OptixSceneLoader::readBackground(const QJsonObject &backgroundObject) {
+
+	QString backgroundType;
+	Background* bg;
+	if (backgroundObject.contains("type") && backgroundObject["type"].isString()) {
+		backgroundType = backgroundObject["type"].toString();
+	}
+
+	if (backgroundType.compare(QString("ConstantBackground"), Qt::CaseInsensitive) == 0) {
+		bg = new ConstantBackground();
+		bg->readJSON(backgroundObject, context);
+	}
+	return bg;
+}
+
+Camera* OptixSceneLoader::readCamera(const QJsonObject &cameraObject, uint& width, uint& height) {
+
+	QString cameraType;
+	Camera* c;
+	if (cameraObject.contains("type") && cameraObject["type"].isString()) {
+		cameraType = cameraObject["type"].toString();
+	}
+
+	if (cameraType.compare(QString("PinholeCamera"), Qt::CaseInsensitive) == 0) {
+		c = new PinholeCamera();
+		c->readJSON(cameraObject, context, width, height);
+	}
+
+	return c;
+}
+
+Geometry* OptixSceneLoader::readGeometry(const QJsonObject &geometryObject) 
+{
+	QString geometryType;
+	Geometry* g;
+	if (geometryObject.contains("type") && geometryObject["type"].isString()) {
+		geometryType = geometryObject["type"].toString();
+	}
+
+	if (geometryType.compare(QString("obj"), Qt::CaseInsensitive) == 0) {
+		g = new OBJGeometry();
+		g->readJSON(geometryObject, context);
+	}
+	optix::GeometryGroup& gg = g->getGeometryGroup();
+	obj_group->addChild(gg);
+	//obj_group->setChild(geometryIndex, gg);
+	return g;
+}
+
+Light* OptixSceneLoader::readLight(const QJsonObject &lightObject, LightStruct* light_data)
+{
+	QString lightType;
+	Light* l;
+	if (lightObject.contains("type") && lightObject["type"].isString()) {
+		lightType = lightObject["type"].toString();
+	}
+
+	if (lightType.compare(QString("PointLight"), Qt::CaseInsensitive) == 0) {
+		PointLight* pl = new PointLight();
+		pl->readJSON(lightObject, context);
+		PointLightStruct* point_light = reinterpret_cast<PointLightStruct*>(light_data);
+		point_light->light_type = POINT_LIGHT;
+		point_light->emitted_radiance = pl->getRadiance();
+		point_light->position = pl->getPosition();
+		//light_data = reinterpret_cast<LightStruct*>(point_light);
+		l = pl;
+	} else if (lightType.compare(QString("DirectionalLight"), Qt::CaseInsensitive) == 0) {
+		DirectionalLight* dl = new DirectionalLight();
+		dl->readJSON(lightObject, context);
+		DirectionalLightStruct* directional_light = reinterpret_cast<DirectionalLightStruct*>(light_data);
+		directional_light->light_type = DIRECTIONAL_LIGHT;
+		directional_light->emitted_radiance = dl->getRadiance();
+		directional_light->direction = dl->getDirection();
+		//light_data = reinterpret_cast<LightStruct*>(directional_light);
+		l = dl;
+	} else if (lightType.compare(QString("TriangleAreaLight"), Qt::CaseInsensitive) == 0) {
+		TriangleAreaLight* tal = new TriangleAreaLight();
+		tal->readJSON(lightObject, context);
+		optix::GeometryGroup& gg = tal->getGeometryGroup();
+		obj_group->addChild(gg);
+		RTsize size;
+		tal->getLightBuffer()->getSize(size);
+		TrianglesAreaLightStruct* triangle_area_light = reinterpret_cast<TrianglesAreaLightStruct*>(light_data);
+		triangle_area_light->light_type = TRIANGLES_AREA_LIGHT;
+		triangle_area_light->emitted_radiance = tal->getRadiance();
+		triangle_area_light->triangle_count = size;
+		triangle_area_light->buffer_start_idx = triangle_light_count;
+		triangle_area_light->buffer_end_idx = triangle_light_count + size - 1;
+		light_data = reinterpret_cast<LightStruct*>(triangle_area_light);
+		triangle_light_count += size;
+		l = tal;
+	}
+
+	return l;
+}
+
+void OptixSceneLoader::initLightBuffers()
+{
+	light_buffer = context->createBuffer(RT_BUFFER_INPUT);
+	light_buffer->setFormat(RT_FORMAT_USER);
+	light_buffer->setElementSize(sizeof(LightStruct));
+	light_buffer->setSize(0);
+	triangle_light_buffer = context->createBuffer(RT_BUFFER_INPUT);
+	triangle_light_buffer->setFormat(RT_FORMAT_USER);
+	triangle_light_buffer->setElementSize(sizeof(TriangleLight));
+	triangle_light_buffer->setSize(0);
+	triangle_light_count = 0;
+}
+
+void OptixSceneLoader::loadTriangleLightBuffer(LightStruct* light_data_vector, unsigned int vector_size)
+{
+	triangle_light_buffer->setSize(triangle_light_count);
+	TriangleLight* triangle_light_data = static_cast<TriangleLight*>(triangle_light_buffer->map());
+	unsigned int buffer_position = 0;
+	for (int idx = 0; idx < vector_size; idx++)
+	{
+		LightStruct light_struct = light_data_vector[idx];
+		if (light_struct.light_type == TRIANGLES_AREA_LIGHT)
+		{
+			TrianglesAreaLightStruct* triangle_light_struct = reinterpret_cast<TrianglesAreaLightStruct*>(&light_struct);
+			TriangleAreaLight* tal = reinterpret_cast<TriangleAreaLight*>(lights[idx]);
+			memcpy(triangle_light_data + triangle_light_struct->buffer_start_idx * sizeof(TriangleLight), tal->getLightBuffer()->map(), triangle_light_struct->triangle_count * sizeof(TriangleLight));
+		}
+	}
+}
